@@ -1,167 +1,205 @@
 'use client'
+
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, TrendingUp } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
-type Row = { ticker: string; allocation: string }
-
-const EXAMPLES = [
-  { label: 'The Responsible Degen', holdings: [{ ticker: 'SPY', allocation: '50' }, { ticker: 'NVDA', allocation: '30' }, { ticker: 'BTC', allocation: '20' }] },
-  { label: 'Full WSB Mode',         holdings: [{ ticker: 'GME', allocation: '40' }, { ticker: 'AMC', allocation: '30' }, { ticker: 'DOGE', allocation: '30' }] },
-  { label: 'Crypto Bro',            holdings: [{ ticker: 'BTC', allocation: '40' }, { ticker: 'ETH', allocation: '30' }, { ticker: 'XRP', allocation: '20' }, { ticker: 'PEPE', allocation: '10' }] },
-]
+interface Holding {
+  ticker: string
+  allocation: number
+}
 
 export default function Home() {
   const router = useRouter()
-  const [rows, setRows] = useState<Row[]>([
-    { ticker: '', allocation: '' },
-    { ticker: '', allocation: '' },
-    { ticker: '', allocation: '' },
+  const [holdings, setHoldings] = useState<Holding[]>([
+    { ticker: '', allocation: 0 },
+    { ticker: '', allocation: 0 },
   ])
+  const [nickname, setNickname] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [makePublic, setMakePublic] = useState(true)
 
-  const updateRow = (i: number, field: keyof Row, value: string) => {
-    const next = [...rows]
-    next[i] = { ...next[i], [field]: field === 'ticker' ? value.toUpperCase() : value }
-    setRows(next)
+  const addHolding = () => {
+    if (holdings.length < 10) {
+      setHoldings([...holdings, { ticker: '', allocation: 0 }])
+    }
   }
 
-  const addRow    = () => setRows([...rows, { ticker: '', allocation: '' }])
-  const removeRow = (i: number) => setRows(rows.filter((_, idx) => idx !== i))
+  const removeHolding = (index: number) => {
+    if (holdings.length > 1) {
+      setHoldings(holdings.filter((_, i) => i !== index))
+    }
+  }
 
-  const loadExample = (holdings: Row[]) => setRows(holdings)
+  const updateHolding = (index: number, field: keyof Holding, value: string) => {
+    const updated = [...holdings]
+    if (field === 'ticker') {
+      updated[index].ticker = value.toUpperCase()
+    } else {
+      updated[index].allocation = parseFloat(value) || 0
+    }
+    setHoldings(updated)
+  }
 
-  const total = rows.reduce((s, r) => s + (parseFloat(r.allocation) || 0), 0)
+  const totalAllocation = holdings.reduce((sum, h) => sum + h.allocation, 0)
 
-  const submit = async () => {
+  const handleSubmit = async () => {
     setError('')
-    const valid = rows.filter(r => r.ticker.trim())
-    if (valid.length < 1) { setError('Add at least one ticker.'); return }
-    if (total > 0 && (total < 85 || total > 115)) {
-      setError(`Allocations add up to ${Math.round(total)}% — keep it close to 100%.`)
+    const validHoldings = holdings.filter(h => h.ticker && h.allocation > 0)
+    if (validHoldings.length === 0) {
+      setError('Add at least one holding with a ticker and allocation.')
       return
     }
+    if (Math.abs(totalAllocation - 100) > 1) {
+      setError(`Allocations must add up to 100% (currently ${totalAllocation.toFixed(1)}%)`)
+      return
+    }
+
     setLoading(true)
     try {
       const res = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ holdings: valid, isPublic: makePublic }),
+        body: JSON.stringify({ holdings: validHoldings, nickname: nickname || 'Anonymous Degen' }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Something went wrong')
-      router.push(`/results/${data.shareId}`)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to analyze portfolio')
+      if (data.id) {
+        router.push(`/results/${data.id}`)
+      } else {
+        setError(data.error || 'Something went wrong. Try again.')
+      }
+    } catch {
+      setError('Failed to connect. Try again.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <main className="max-w-xl mx-auto px-4 py-16">
-      <div className="text-center mb-12">
-        <div className="text-6xl mb-4">🦍</div>
-        <h1 className="text-4xl font-bold tracking-tight mb-3">
-          Degen Portfolio Analyzer
-        </h1>
-        <p className="text-zinc-400 text-lg">
-          Find out if you&apos;re a Warren Buffett or a WSB Ape.
-          <br />Get brutally roasted by AI.
-        </p>
+    <main className="min-h-screen bg-black text-white">
+      {/* Header */}
+      <div className="border-b border-zinc-800 px-4 py-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-black tracking-tight text-yellow-400">DEGEN</h1>
+          <p className="text-xs text-zinc-500 tracking-widest uppercase">Portfolio Analyzer</p>
+        </div>
+        <a
+          href="/leaderboard"
+          className="text-xs text-yellow-400 border border-yellow-400/40 px-3 py-1.5 rounded hover:bg-yellow-400/10 transition-colors"
+        >
+          🏆 Leaderboard
+        </a>
       </div>
 
-      {/* Example portfolios */}
-      <div className="mb-6">
-        <p className="text-xs text-zinc-500 mb-2 uppercase tracking-wider">Try an example</p>
-        <div className="flex gap-2 flex-wrap">
-          {EXAMPLES.map(ex => (
-            <button key={ex.label} onClick={() => loadExample(ex.holdings)}
-              className="text-xs px-3 py-1.5 rounded-full border border-[#333] text-zinc-400 hover:text-white hover:border-[#555] transition-colors">
-              {ex.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Input form */}
-      <div className="surface rounded-xl p-6 mb-4">
-        <div className="flex gap-3 mb-3 text-xs text-zinc-500 uppercase tracking-wider px-1">
-          <span className="flex-1">Ticker</span>
-          <span className="w-24 text-right">Allocation %</span>
-          <span className="w-8" />
+      <div className="max-w-lg mx-auto px-4 py-8">
+        {/* Hero */}
+        <div className="mb-8 text-center">
+          <div className="text-5xl mb-3">🦍</div>
+          <h2 className="text-3xl font-black tracking-tight mb-2">
+            How degen is your<br />
+            <span className="text-yellow-400">portfolio?</span>
+          </h2>
+          <p className="text-zinc-400 text-sm">
+            Enter your holdings. Get roasted by AI. Find out if you&apos;re a genius or a degenerate gambler.
+          </p>
         </div>
 
-        {rows.map((row, i) => (
-          <div key={i} className="flex gap-3 mb-3 items-center">
-            <input
-              className="ticker-input flex-1 bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-orange-500/50 text-white placeholder:text-zinc-600"
-              placeholder="AAPL"
-              maxLength={10}
-              value={row.ticker}
-              onChange={e => updateRow(i, 'ticker', e.target.value)}
-            />
-            <input
-              className="w-24 bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2.5 text-sm text-right focus:outline-none focus:border-orange-500/50 text-white placeholder:text-zinc-600"
-              placeholder="25"
-              type="number"
-              min={0}
-              max={100}
-              value={row.allocation}
-              onChange={e => updateRow(i, 'allocation', e.target.value)}
-            />
-            <button onClick={() => removeRow(i)}
-              className="w-8 h-8 flex items-center justify-center text-zinc-600 hover:text-red-400 transition-colors rounded-lg hover:bg-red-400/10">
-              <Trash2 size={14} />
-            </button>
+        {/* Nickname */}
+        <div className="mb-6">
+          <label className="block text-xs text-zinc-500 uppercase tracking-widest mb-2">
+            Your Name / Handle
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. WSB_Ape420"
+            value={nickname}
+            onChange={e => setNickname(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-yellow-400 transition-colors text-base"
+          />
+        </div>
+
+        {/* Holdings */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs text-zinc-500 uppercase tracking-widest">Holdings</label>
+            <span className={`text-xs font-mono ${Math.abs(totalAllocation - 100) < 1 ? 'text-green-400' : 'text-yellow-400'}`}>
+              {totalAllocation.toFixed(0)}% / 100%
+            </span>
           </div>
-        ))}
 
-        <button onClick={addRow}
-          className="w-full py-2 border border-dashed border-[#333] rounded-lg text-sm text-zinc-500 hover:text-zinc-300 hover:border-[#555] transition-colors flex items-center justify-center gap-2 mt-1">
-          <Plus size={14} /> Add holding
+          <div className="space-y-2">
+            {holdings.map((holding, index) => (
+              <div key={index} className="flex gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="TICKER"
+                  value={holding.ticker}
+                  onChange={e => updateHolding(index, 'ticker', e.target.value)}
+                  className="w-28 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-yellow-400 transition-colors font-mono text-sm uppercase"
+                  maxLength={6}
+                />
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={holding.allocation || ''}
+                    onChange={e => updateHolding(index, 'allocation', e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-3 pr-8 text-white placeholder-zinc-600 focus:outline-none focus:border-yellow-400 transition-colors text-sm"
+                    min="0"
+                    max="100"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm">%</span>
+                </div>
+                <button
+                  onClick={() => removeHolding(index)}
+                  className="text-zinc-600 hover:text-red-400 transition-colors p-2 text-lg leading-none"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Add holding */}
+        {holdings.length < 10 && (
+          <button
+            onClick={addHolding}
+            className="w-full border border-dashed border-zinc-700 rounded-lg py-2.5 text-zinc-500 hover:border-yellow-400/50 hover:text-yellow-400/70 transition-colors text-sm mb-6"
+          >
+            + Add holding
+          </button>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Submit */}
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="w-full bg-yellow-400 text-black font-black text-lg py-4 rounded-xl hover:bg-yellow-300 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed tracking-tight"
+        >
+          {loading ? (
+            <span className="flex items-center justify-center gap-2">
+              <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Roasting your portfolio...
+            </span>
+          ) : (
+            'ANALYZE MY PORTFOLIO 🔥'
+          )}
         </button>
 
-        {/* Allocation total indicator */}
-        {total > 0 && (
-          <div className={cn('mt-4 text-xs text-right', total > 115 || total < 85 ? 'text-red-400' : 'text-green-400')}>
-            Total: {Math.round(total)}%
-          </div>
-        )}
-
-        {/* Public toggle */}
-        <div className="mt-4 pt-4 border-t border-[#222] flex items-center justify-between">
-          <div>
-            <p className="text-sm text-zinc-300">Add to leaderboard</p>
-            <p className="text-xs text-zinc-600">Let others see your portfolio on the hall of shame</p>
-          </div>
-          <button onClick={() => setMakePublic(!makePublic)}
-            className={cn('w-10 h-6 rounded-full transition-colors relative', makePublic ? 'bg-orange-500' : 'bg-[#333]')}>
-            <span className={cn('absolute top-1 w-4 h-4 bg-white rounded-full transition-all', makePublic ? 'left-5' : 'left-1')} />
-          </button>
-        </div>
+        <p className="text-center text-zinc-600 text-xs mt-4">
+          Not financial advice. Obviously.
+        </p>
       </div>
-
-      {error && <p className="text-red-400 text-sm text-center mb-4">{error}</p>}
-
-      <button onClick={submit} disabled={loading}
-        className="w-full py-4 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 text-lg">
-        {loading ? (
-          <>
-            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            Consulting the WSB oracle...
-          </>
-        ) : (
-          <><TrendingUp size={20} /> Roast my portfolio</>
-        )}
-      </button>
-
-      <p className="text-center text-xs text-zinc-600 mt-4">
-        Not financial advice. Obviously.
-      </p>
     </main>
   )
 }
