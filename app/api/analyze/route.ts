@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
+import { normalizeTicker, type HoldingInput } from '../../../lib/marketData'
+import { analyzeLive, liveColumns, stripNewColumns } from '../../../lib/degenPipeline'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+export const runtime = 'nodejs'
+export const maxDuration = 60
 
 function getSupabase() {
   return createClient(
@@ -11,81 +13,81 @@ function getSupabase() {
   )
 }
 
+// Light in-memory rate limiter (per server instance) — protects Anthropic
+// credits + provider rate limits from spam.
+const RL_WINDOW_MS = 60_000
+const RL_MAX = 10
+const rl = new Map<string, number[]>()
+function rateLimited(ip: string): boolean {
+  const now = Date.now()
+  const hits = (rl.get(ip) || []).filter((t) => now - t < RL_WINDOW_MS)
+  hits.push(now)
+  rl.set(ip, hits)
+  return hits.length > RL_MAX
+}
+
+// GET /api/analyze?id=xxx — fetch a saved analysis (degen_score aliased to score)
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
 
   const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from('analyses')
-    .select('*')
-    .eq('id', id)
-    .single()
-
+  const { data, error } = await supabase.from('analyses').select('*').eq('id', id).single()
   if (error || !data) {
     return NextResponse.json({ error: 'Analysis not found' }, { status: 404 })
   }
   return NextResponse.json({ ...data, degen_score: data.score })
 }
 
+// POST /api/analyze — real data + news -> deterministic score + fresh roast
 export async function POST(req: NextRequest) {
   try {
-    const { holdings, nickname } = await req.json()
-
-    if (!holdings || holdings.length === 0) {
-      return NextResponse.json({ error: 'No holdings provided' }, { status: 400 })
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
+    if (rateLimited(ip)) {
+      return NextResponse.json({ error: 'Slow down — too many requests.' }, { status: 429 })
     }
 
-    const holdingsList = holdings
-      .map((h: { ticker: string; allocation: number }) => `${h.ticker}: ${h.allocation}%`)
-      .join(', ')
+    const body = await req.json()
+    const nickname = String(body?.nickname || 'Anonymous Degen').slice(0, 40)
 
-    const prompt = `You are a brutally honest, darkly funny financial analyst who roasts investment portfolios. Analyze this portfolio: ${holdingsList}
+    const rawHoldings = Array.isArray(body?.holdings) ? body.holdings : []
+    const holdings: HoldingInput[] = rawHoldings
+      .map((h: { ticker?: unknown; allocation?: unknown }) => ({
+        ticker: normalizeTicker(String(h?.ticker ?? '')).slice(0, 8),
+        allocation: Math.max(0, Math.min(100, Number(h?.allocation) || 0)),
+      }))
+      .filter((h: HoldingInput) => h.ticker.length > 0 && h.allocation > 0)
+      .slice(0, 12)
 
-Respond ONLY with a valid JSON object, no markdown, no extra text:
-{
-  "score": <integer 0-100, where 0=Warren Buffett, 100=lost everything on meme coins>,
-  "verdict": <one of exactly: "Warren Buffett", "Index Fund Andy", "Casual Gambler", "WSB Recruit", "Full Degen", "Certifiable">,
-  "roast": <2-3 sentences, brutal and funny, reference specific tickers>,
-  "vibes": <one sentence vibe check on the overall portfolio>,
-  "holdings": [
-    {"ticker": "<TICKER>", "allocation": <number>, "classification": "<one word: safe/boomer/growth/gambling/degen/unhinged>"}
-  ]
-}
+    if (holdings.length === 0) {
+      return NextResponse.json({ error: 'No valid holdings provided' }, { status: 400 })
+    }
 
-Scoring: 0-20=boring/safe, 21-40=sensible, 41-60=some edge, 61-80=degen tendencies, 81-100=certifiable.`
+    const analysis = await analyzeLive(holdings)
 
-    const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      messages: [{ role: 'user', content: prompt }],
-    })
-
-    const rawText = message.content[0].type === 'text' ? message.content[0].text : ''
-    const cleaned = rawText.replace(/```json|```/g, '').trim()
-    const result = JSON.parse(cleaned)
+    const fullRow = {
+      nickname,
+      ...liveColumns(analysis),
+      is_public: true,
+    }
 
     const supabase = getSupabase()
-    const { data, error } = await supabase
-      .from('analyses')
-      .insert({
-        nickname: nickname || 'Anonymous Degen',
-        score: result.score,
-        verdict: result.verdict,
-        roast: result.roast,
-        vibes: result.vibes || '',
-        holdings: result.holdings,
-        is_public: true,
-      })
-      .select('id')
-      .single()
-
-    if (error) {
-      console.error('Supabase insert error:', error)
-      return NextResponse.json({ error: 'Failed to save: ' + error.message }, { status: 500 })
+    let insert = await supabase.from('analyses').insert(fullRow).select('id').single()
+    if (insert.error) {
+      // New columns may not be migrated yet — retry with the original columns only.
+      console.warn('Insert with new columns failed, retrying base columns:', insert.error.message)
+      insert = await supabase.from('analyses').insert(stripNewColumns(fullRow)).select('id').single()
     }
 
-    return NextResponse.json({ id: data.id, degen_score: result.score, ...result })
+    if (insert.error || !insert.data) {
+      console.error('Supabase insert error:', insert.error)
+      return NextResponse.json(
+        { error: 'Failed to save: ' + (insert.error?.message || 'unknown') },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ id: insert.data.id, degen_score: analysis.score, ...analysis })
   } catch (err) {
     console.error('Analyze error:', err)
     return NextResponse.json({ error: 'Analysis failed. Try again.' }, { status: 500 })
