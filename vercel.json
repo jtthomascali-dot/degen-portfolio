@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/reroast-leaderboard",
+      "schedule": "0 13 * * *"
+    }
+  ]
+}
