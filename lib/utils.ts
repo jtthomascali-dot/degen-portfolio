@@ -5,11 +5,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function getScoreColor(score: number): string {
-  if (score < 20) return 'text-green-400'
-  if (score < 40) return 'text-blue-400'
-  if (score < 60) return 'text-yellow-400'
-  if (score < 80) return 'text-orange-400'
-  return 'text-red-400'
+  if (score < 20) return 'text-[#3FCF8E]'
+  if (score < 40) return 'text-[#3FCF8E]'
+  if (score < 60) return 'text-[#F5A623]'
+  if (score < 80) return 'text-[#F5A623]'
+  return 'text-[#FF4438]'
 }
 
 export function getScoreBg(score: number): string {

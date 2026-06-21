@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   try {
     const supabase = createClient(
@@ -11,6 +13,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from('analyses')
       .select('id, nickname, score, verdict, holdings, created_at')
+      .eq('is_public', true)
       .order('score', { ascending: false })
       .limit(50)
 

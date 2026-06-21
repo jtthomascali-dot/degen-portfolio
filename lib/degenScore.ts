@@ -206,12 +206,16 @@ export function computeDegenScore(
 // ---------------------------------------------------------------------------
 
 export function verdictFor(score: number): string {
-  if (score < 20) return 'Warren Buffett'
-  if (score < 40) return 'Index Fund Andy'
-  if (score < 55) return 'Casual Gambler'
+  if (score < 10) return 'Warren Buffett'
+  if (score < 20) return 'Bond Dad'
+  if (score < 30) return 'Index Fund Andy'
+  if (score < 40) return 'Boglehead in Recovery'
+  if (score < 50) return 'Casual Gambler'
+  if (score < 60) return 'Spicy But Survivable'
   if (score < 70) return 'WSB Recruit'
-  if (score < 85) return 'Full Degen'
-  return 'Certifiable'
+  if (score < 80) return 'Full Degen'
+  if (score < 90) return 'Certifiable'
+  return 'Margin Call Incoming'
 }
 
 // ---------------------------------------------------------------------------

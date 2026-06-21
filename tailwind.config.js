@@ -7,16 +7,20 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        mono: ['JetBrains Mono', 'monospace'],
+        mono: ['var(--font-mono)', 'JetBrains Mono', 'monospace'],
+        serif: ['var(--font-serif)', 'Newsreader', 'serif'],
         sans: ['Inter', 'sans-serif'],
       },
       colors: {
+        ink: '#0A0E0F',
+        cream: '#E7E5DF',
+        paper: '#ECEAE4',
         degen: {
-          green:  '#22c55e',
-          yellow: '#eab308',
-          orange: '#f97316',
-          red:    '#ef4444',
-          purple: '#a855f7',
+          green:  '#3FCF8E',
+          amber:  '#F5A623',
+          red:    '#FF4438',
+          muted:  '#7E867F',
+          dim:    '#5C635D',
         }
       },
       animation: {

@@ -8,8 +8,13 @@
 }
 
 body {
-  background: #000;
-  color: #fff;
+  background: #0A0E0F;
+  color: #ECEAE4;
+}
+
+::selection {
+  background: #FF4438;
+  color: #0A0E0F;
 }
 
 input[type='number']::-webkit-inner-spin-button,

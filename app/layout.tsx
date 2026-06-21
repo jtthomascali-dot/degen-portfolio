@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { JetBrains_Mono, Newsreader } from 'next/font/google'
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
+const serif = Newsreader({ subsets: ['latin'], style: ['normal', 'italic'], variable: '--font-serif' })
 
 export const metadata: Metadata = {
   title: 'DEGEN Portfolio Analyzer',
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={`${mono.variable} ${serif.variable} font-mono`}>{children}</body>
     </html>
   )
 }

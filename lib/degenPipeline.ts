@@ -115,9 +115,11 @@ ${metricsContext}
 
 ${newsContext}
 
+End on one or two short, simple closing sentences that land harder because they're short — under 8 words each. Write an ORIGINAL line specific to this exact portfolio and score; never reuse stock phrases like "touch grass" or "you absolute adult" — those are generic and this portfolio deserves better. Match the tone to the actual risk level: a low/safe score earns a backhanded compliment, a high/reckless score earns real mockery.
+
 Respond ONLY with a valid JSON object, no markdown, no backticks:
 {
-  "roast": "<2-3 sentences, savage but accurate, reference specific tickers + a recent move or headline>",
+  "roast": "<2-3 sentences, savage but accurate, reference specific tickers + a recent move or headline, ending on the short punchy closer described above>",
   "vibes": "<one short funny vibe-check phrase for the whole portfolio>"
 }`
 

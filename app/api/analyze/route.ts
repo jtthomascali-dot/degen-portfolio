@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { normalizeTicker, type HoldingInput } from '../../../lib/marketData'
 import { analyzeLive, liveColumns, stripNewColumns } from '../../../lib/degenPipeline'
+import { containsBlockedTerm } from '../../../lib/moderation'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -49,6 +50,10 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json()
     const nickname = String(body?.nickname || 'Anonymous Degen').slice(0, 40)
+    if (containsBlockedTerm(nickname)) {
+      return NextResponse.json({ error: 'That nickname isn\'t allowed. Try another one.' }, { status: 400 })
+    }
+    const isPublic = body?.shareToLeaderboard !== false
 
     const rawHoldings = Array.isArray(body?.holdings) ? body.holdings : []
     const holdings: HoldingInput[] = rawHoldings
@@ -68,7 +73,7 @@ export async function POST(req: NextRequest) {
     const fullRow = {
       nickname,
       ...liveColumns(analysis),
-      is_public: true,
+      is_public: isPublic,
     }
 
     const supabase = getSupabase()
