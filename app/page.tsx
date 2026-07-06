@@ -9,6 +9,31 @@ interface Holding {
   allocation: number
 }
 
+// Persists a completed analysis to localStorage so /history has something to
+// show. Best-effort only — never blocks navigation to the results page.
+function saveToHistory(data: {
+  id: string
+  score?: number
+  degen_score?: number
+  verdict?: string
+  holdings?: { ticker: string; allocation: number }[]
+}) {
+  try {
+    const raw = localStorage.getItem('degen_history')
+    const history = raw ? JSON.parse(raw) : []
+    history.push({
+      shareId: data.id,
+      score: data.score ?? data.degen_score ?? 0,
+      verdict: data.verdict || '',
+      holdings: (data.holdings || []).map((h) => ({ ticker: h.ticker, allocation: String(h.allocation) })),
+      date: new Date().toISOString(),
+    })
+    localStorage.setItem('degen_history', JSON.stringify(history))
+  } catch {
+    /* localStorage unavailable or full — history is best-effort */
+  }
+}
+
 export default function Home() {
   const router = useRouter()
   const [holdings, setHoldings] = useState<Holding[]>([
@@ -107,6 +132,7 @@ export default function Home() {
       })
       const data = await res.json()
       if (data.id) {
+        saveToHistory(data)
         router.push(`/results/${data.id}`)
       } else {
         setError(data.error || 'Something went wrong. Try again.')

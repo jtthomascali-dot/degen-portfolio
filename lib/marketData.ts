@@ -73,7 +73,7 @@ const MEME_TICKERS = new Set([
   'GME', 'AMC', 'BB', 'NOK', 'KOSS', 'BBBY', 'MULN', 'NKLA', 'FFIE', 'TLRY', 'SNDL',
   'CVNA', 'DJT', 'SMCI', 'RIOT', 'MARA', 'COIN', 'MSTR', 'HOOD', 'SOFI', 'PLTR',
   'RIVN', 'LCID', 'CHPT', 'WKHS', 'RKT', 'CLOV', 'WISH', 'BBIG', 'ATER', 'PROG',
-  'GamesStop', 'SPCE', 'PTON', 'HYMC', 'GME', 'IONQ', 'RGTI', 'QBTS', 'SOUN', 'BBAI',
+  'SPCE', 'PTON', 'HYMC', 'IONQ', 'RGTI', 'QBTS', 'SOUN', 'BBAI',
 ])
 
 // Broad, diversified market ETFs -> treated as "safe" ballast.
