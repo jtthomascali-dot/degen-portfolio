@@ -133,6 +133,86 @@ export function pctChange(closes: number[], lookback: number): number | null {
 }
 
 // ---------------------------------------------------------------------------
+// Beta, computed locally from price history vs. a market benchmark (SPY).
+// This works with no API key, so beta is available even when FMP_API_KEY
+// isn't set (previously beta only ever came from FMP's profile endpoint, so
+// it silently stayed null/"n/a" for everyone using the keyless Yahoo path).
+// ---------------------------------------------------------------------------
+
+const BETA_BENCHMARK = 'SPY'
+const BENCHMARK_CACHE_TTL_MS = 1000 * 60 * 60 // 1 hour; slow-moving reference series
+let benchmarkCache: { at: number; series: Map<string, number> } | null = null
+
+function dayKey(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+// Fetches SPY daily closes (keyless, Yahoo) and returns them as a date -> close
+// map so any asset's series can be aligned to it by trading day.
+async function getBenchmarkSeries(): Promise<Map<string, number> | null> {
+  if (benchmarkCache && Date.now() - benchmarkCache.at < BENCHMARK_CACHE_TTL_MS) {
+    return benchmarkCache.series
+  }
+  const data = (await fetchJson(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${BETA_BENCHMARK}?range=1y&interval=1d`
+  )) as {
+    chart?: {
+      result?: Array<{
+        timestamp?: number[]
+        indicators?: { adjclose?: Array<{ adjclose?: (number | null)[] }>; quote?: Array<{ close?: (number | null)[] }> }
+      }>
+    }
+  } | null
+  const result = data?.chart?.result?.[0]
+  const timestamps = result?.timestamp
+  const closes = result?.indicators?.adjclose?.[0]?.adjclose ?? result?.indicators?.quote?.[0]?.close
+  if (!timestamps || !closes) return null
+
+  const series = new Map<string, number>()
+  for (let i = 0; i < timestamps.length; i++) {
+    const c = closes[i]
+    if (typeof c === 'number' && c > 0) series.set(dayKey(timestamps[i] * 1000), c)
+  }
+  if (series.size < 30) return null
+  benchmarkCache = { at: Date.now(), series }
+  return series
+}
+
+// Beta of an asset vs. the benchmark: aligns both series by trading day,
+// takes daily log returns, and returns cov(asset, market) / var(market).
+function computeBetaFromSeries(assetSeries: Map<string, number>, benchSeries: Map<string, number>): number | null {
+  const days = Array.from(assetSeries.keys())
+    .filter((d) => benchSeries.has(d))
+    .sort()
+  if (days.length < 30) return null
+
+  const assetReturns: number[] = []
+  const benchReturns: number[] = []
+  for (let i = 1; i < days.length; i++) {
+    const a0 = assetSeries.get(days[i - 1])!
+    const a1 = assetSeries.get(days[i])!
+    const b0 = benchSeries.get(days[i - 1])!
+    const b1 = benchSeries.get(days[i])!
+    if (a0 > 0 && a1 > 0 && b0 > 0 && b1 > 0) {
+      assetReturns.push(Math.log(a1 / a0))
+      benchReturns.push(Math.log(b1 / b0))
+    }
+  }
+  if (assetReturns.length < 20) return null
+
+  const meanA = assetReturns.reduce((s, r) => s + r, 0) / assetReturns.length
+  const meanB = benchReturns.reduce((s, r) => s + r, 0) / benchReturns.length
+  let cov = 0
+  let varB = 0
+  for (let i = 0; i < assetReturns.length; i++) {
+    cov += (assetReturns[i] - meanA) * (benchReturns[i] - meanB)
+    varB += (benchReturns[i] - meanB) ** 2
+  }
+  if (varB === 0) return null
+  return cov / varB
+}
+
+// ---------------------------------------------------------------------------
 // Tiny in-memory cache (per server instance). TTL keeps quotes fresh-ish
 // while avoiding hammering providers / rate limits during bursts.
 // ---------------------------------------------------------------------------
@@ -182,17 +262,33 @@ async function fetchEquityFMP(ticker: string, apiKey: string): Promise<AssetMetr
   let annualizedVol: number | null = null
   let change1dPct: number | null = null
   let change1mPct: number | null = null
+  let series: Map<string, number> | null = null
   const hist = (await fetchJson(
     `https://financialmodelingprep.com/api/v3/historical-price-full/${t}?timeseries=120&apikey=${apiKey}`
-  )) as { historical?: Array<{ close?: number; adjClose?: number }> } | null
+  )) as { historical?: Array<{ date?: string; close?: number; adjClose?: number }> } | null
   if (hist?.historical?.length) {
     // FMP returns newest-first; reverse to chronological for log returns.
-    const closes = hist.historical
-      .map((d) => (typeof d.adjClose === 'number' ? d.adjClose : d.close ?? 0))
-      .reverse()
+    const chronological = hist.historical.slice().reverse()
+    const closes = chronological.map((d) => (typeof d.adjClose === 'number' ? d.adjClose : d.close ?? 0))
     annualizedVol = annualizedVolFromCloses(closes)
     change1dPct = pctChange(closes, 1)
     change1mPct = pctChange(closes, 21)
+
+    series = new Map<string, number>()
+    for (const d of chronological) {
+      const c = typeof d.adjClose === 'number' ? d.adjClose : d.close
+      if (typeof c === 'number' && c > 0 && d.date) series.set(d.date, c)
+    }
+  }
+
+  // FMP's free-tier profile endpoint often omits beta entirely; fall back to
+  // computing it ourselves from the historical closes we already fetched.
+  let beta = numOrNull(profile.beta)
+  if (beta == null && series && t !== BETA_BENCHMARK) {
+    const bench = await getBenchmarkSeries()
+    if (bench) beta = computeBetaFromSeries(series, bench)
+  } else if (beta == null && t === BETA_BENCHMARK) {
+    beta = 1
   }
 
   const isEtf = profile.isEtf === true
@@ -202,7 +298,7 @@ async function fetchEquityFMP(ticker: string, apiKey: string): Promise<AssetMetr
     assetType: isEtf ? 'etf' : 'equity',
     price: numOrNull(profile.price),
     marketCap: numOrNull(profile.mktCap),
-    beta: numOrNull(profile.beta),
+    beta,
     sector: (profile.sector as string) || (isEtf ? 'ETF' : null),
     annualizedVol,
     week52High: range52High(profile.range),
@@ -217,7 +313,8 @@ async function fetchEquityFMP(ticker: string, apiKey: string): Promise<AssetMetr
 }
 
 // Yahoo chart endpoint (keyless). Gives price + closes (=> vol) + 52w meta.
-// No beta/marketCap/sector here; the scorer down-weights those when missing.
+// No marketCap/sector here; the scorer down-weights those when missing. Beta
+// is computed locally from this same close history vs. the SPY benchmark.
 async function fetchEquityYahoo(ticker: string): Promise<AssetMetrics | null> {
   const t = normalizeTicker(ticker)
   const data = (await fetchJson(
@@ -226,18 +323,34 @@ async function fetchEquityYahoo(ticker: string): Promise<AssetMetrics | null> {
     chart?: {
       result?: Array<{
         meta?: Record<string, unknown>
-        indicators?: { adjclose?: Array<{ adjclose?: number[] }>; quote?: Array<{ close?: number[] }> }
+        timestamp?: number[]
+        indicators?: { adjclose?: Array<{ adjclose?: (number | null)[] }>; quote?: Array<{ close?: (number | null)[] }> }
       }>
     }
   } | null
   const result = data?.chart?.result?.[0]
   if (!result) return null
   const meta = result.meta || {}
-  const closes = (
-    result.indicators?.adjclose?.[0]?.adjclose ??
-    result.indicators?.quote?.[0]?.close ??
-    []
-  ).filter(Boolean) as number[]
+  const timestamps = result.timestamp || []
+  const rawCloses = result.indicators?.adjclose?.[0]?.adjclose ?? result.indicators?.quote?.[0]?.close ?? []
+
+  const closes: number[] = []
+  const series = new Map<string, number>()
+  for (let i = 0; i < rawCloses.length; i++) {
+    const c = rawCloses[i]
+    if (typeof c === 'number' && c > 0) {
+      closes.push(c)
+      if (timestamps[i]) series.set(dayKey(timestamps[i] * 1000), c)
+    }
+  }
+
+  let beta: number | null = null
+  if (t === BETA_BENCHMARK) {
+    beta = 1
+  } else {
+    const bench = await getBenchmarkSeries()
+    if (bench) beta = computeBetaFromSeries(series, bench)
+  }
 
   return {
     ticker: t,
@@ -245,7 +358,7 @@ async function fetchEquityYahoo(ticker: string): Promise<AssetMetrics | null> {
     assetType: isBroadEtf(t) || isLeveraged(t) ? 'etf' : 'equity',
     price: numOrNull(meta.regularMarketPrice),
     marketCap: null,
-    beta: null,
+    beta,
     sector: null,
     annualizedVol: annualizedVolFromCloses(closes),
     week52High: numOrNull(meta.fiftyTwoWeekHigh),
