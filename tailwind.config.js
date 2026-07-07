@@ -27,10 +27,12 @@ module.exports = {
         'fade-in':    'fadeIn 0.4s ease forwards',
         'slide-up':   'slideUp 0.5s ease forwards',
         'pulse-slow': 'pulse 3s ease-in-out infinite',
+        'deg-blink':  'degBlink 1.05s steps(1) infinite',
       },
       keyframes: {
         fadeIn:  { from: { opacity: 0 }, to: { opacity: 1 } },
         slideUp: { from: { opacity: 0, transform: 'translateY(16px)' }, to: { opacity: 1, transform: 'translateY(0)' } },
+        degBlink: { '0%, 50%': { opacity: 1 }, '51%, 100%': { opacity: 0 } },
       }
     },
   },

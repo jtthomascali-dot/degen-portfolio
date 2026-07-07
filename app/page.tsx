@@ -148,9 +148,9 @@ export default function Home() {
     <main className="flex min-h-screen flex-col bg-ink text-paper">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-paper/10 px-8 py-6 sm:px-14">
-        <div className="flex items-center gap-3">
-          <div className="h-[10px] w-[10px] bg-paper" />
+        <div className="flex items-center">
           <span className="text-[17px] font-bold tracking-[0.30em]">DEGEN</span>
+          <span className="ml-[3px] h-[18px] w-[7px] animate-deg-blink bg-degen-red" />
         </div>
         <a
           href="/leaderboard"
