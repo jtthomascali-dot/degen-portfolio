@@ -103,7 +103,10 @@ export default function ShareCardPage() {
     <main className="min-h-screen bg-ink text-paper">
       <div className="flex items-center justify-between border-b border-paper/10 px-6 py-5 sm:px-10">
         <Link href={`/results/${id}`} className="text-[11px] uppercase tracking-[0.18em] text-degen-muted transition-colors hover:text-paper">&larr; Back to results</Link>
-        <span className="text-[14px] font-bold tracking-[0.28em]">DEGEN</span>
+        <div className="flex items-center">
+          <span className="text-[14px] font-bold tracking-[0.28em]">DEGEN</span>
+          <span className="ml-[3px] h-[15px] w-[6px] animate-deg-blink bg-degen-red" />
+        </div>
         <span className="w-[110px]" />
       </div>
 
@@ -120,9 +123,9 @@ export default function ShareCardPage() {
             style={{ background: `radial-gradient(95% 65% at 50% 118%, ${accent}55, transparent 60%)` }}
           />
           <div className="relative flex items-center justify-between px-6 py-5">
-            <div className="flex items-center gap-2.5">
-              <div className="h-[8px] w-[8px] bg-paper" />
+            <div className="flex items-center">
               <span className="text-[13px] font-bold tracking-[0.30em] text-paper">DEGEN</span>
+              <span className="ml-[3px] h-[14px] w-[6px] animate-deg-blink bg-degen-red" />
             </div>
             <span className="text-[9px] uppercase tracking-[0.18em] text-degen-muted">Portfolio Roast</span>
           </div>

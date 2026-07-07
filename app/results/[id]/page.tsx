@@ -236,9 +236,9 @@ export default function ResultsPage() {
 
       {/* chrome */}
       <div className="relative flex items-center justify-between border-b border-paper/10 px-7 py-[26px] sm:px-14">
-        <div className="flex items-center gap-3">
-          <div className="h-[9px] w-[9px] bg-paper" />
+        <div className="flex items-center">
           <span className="text-[15px] font-bold tracking-[0.30em]">DEGEN</span>
+          <span className="ml-[3px] h-[16px] w-[6px] animate-deg-blink bg-degen-red" />
         </div>
         <div className="flex gap-8 text-[11px] uppercase tracking-[0.18em] text-degen-muted">
           <Link href="/" className="transition-colors hover:text-paper">&larr; New analysis</Link>
